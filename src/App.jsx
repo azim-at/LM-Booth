@@ -9,7 +9,7 @@ import {
 import * as THREE from "three";
 
 /* =======================
-   Advanced Easing Functions
+  Advanced Easing Functions
 ======================= */
 const easings = {
   // Smooth ease-in-out (default)
@@ -34,7 +34,172 @@ const easings = {
 };
 
 /* =======================
-   Scene Transition Manager
+  360° Rotation Camera - Plays Once on Load
+======================= */
+function Rotation360Camera({ isActive, onComplete }) {
+  const { camera } = useThree();
+  const startTime = useRef(Date.now());
+  const radius = 8;
+  const height = 3;
+  const rotationDuration = 10; // 10 seconds for one full rotation
+  const transitionDuration = 2; // 2 seconds for transition to first scene position
+  const hasCompleted = useRef(false);
+  const isTransitioning = useRef(false);
+  const transitionStartTime = useRef(null);
+
+  // Store the position at end of rotation
+  const rotationEndPosition = useRef(new THREE.Vector3());
+
+  useFrame(() => {
+    if (isActive && !hasCompleted.current) {
+      const elapsed = (Date.now() - startTime.current) / 1000;
+      const progress = elapsed / rotationDuration;
+
+      if (progress >= 1 && !isTransitioning.current) {
+        // Rotation complete - start transition
+        isTransitioning.current = true;
+        transitionStartTime.current = Date.now();
+
+        // Store current position
+        rotationEndPosition.current.copy(camera.position);
+        return;
+      }
+
+      if (isTransitioning.current) {
+        // Smooth transition to first scene position
+        const transitionElapsed =
+          (Date.now() - transitionStartTime.current) / 1000;
+        const transitionProgress = Math.min(
+          transitionElapsed / transitionDuration,
+          1
+        );
+
+        // Smooth easing
+        const ease =
+          transitionProgress < 0.5
+            ? 4 * transitionProgress * transitionProgress * transitionProgress
+            : 1 - Math.pow(-2 * transitionProgress + 2, 3) / 2;
+
+        // Target position (first scene's first keyframe)
+        const targetPosition = new THREE.Vector3(12, 6, 12);
+
+        // Interpolate position
+        camera.position.lerpVectors(
+          rotationEndPosition.current,
+          targetPosition,
+          ease
+        );
+
+        // Interpolate FOV
+        const startFov = 50;
+        const targetFov = 65;
+        camera.fov = startFov + (targetFov - startFov) * ease;
+        camera.updateProjectionMatrix();
+
+        camera.lookAt(0, 1, 0);
+
+        if (transitionProgress >= 1) {
+          // Transition complete
+          hasCompleted.current = true;
+          if (onComplete) {
+            onComplete();
+          }
+        }
+        return;
+      }
+
+      // Normal rotation
+      const angle = progress * Math.PI * 2; // Complete 360° rotation
+
+      camera.position.x = Math.sin(angle) * radius;
+      camera.position.z = Math.cos(angle) * radius;
+      camera.position.y = height;
+      camera.lookAt(0, 1, 0);
+
+      // Maintain consistent FOV during rotation
+      camera.fov = 50;
+      camera.updateProjectionMatrix();
+    }
+  });
+
+  // Reset when isActive changes
+  useEffect(() => {
+    if (isActive) {
+      startTime.current = Date.now();
+      hasCompleted.current = false;
+      isTransitioning.current = false;
+      transitionStartTime.current = null;
+    }
+  }, [isActive]);
+
+  return null;
+}
+
+/* =======================
+  Transition Back to 360 End Position
+======================= */
+function TransitionTo360End({ isActive, onComplete }) {
+  const { camera } = useThree();
+  const startTime = useRef(null);
+  const startPosition = useRef(new THREE.Vector3());
+  const startFov = useRef(50);
+  const transitionDuration = 2; // 2 seconds
+  const hasCompleted = useRef(false);
+
+  useEffect(() => {
+    if (isActive && !hasCompleted.current) {
+      startTime.current = Date.now();
+      startPosition.current.copy(camera.position);
+      startFov.current = camera.fov;
+    }
+  }, [isActive]);
+
+  useFrame(() => {
+    if (isActive && !hasCompleted.current && startTime.current) {
+      const elapsed = (Date.now() - startTime.current) / 1000;
+      const progress = Math.min(elapsed / transitionDuration, 1);
+
+      // Smooth easing
+      const ease =
+        progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+      // Target position (end of 360 rotation - where it started from angle 0)
+      const targetPosition = new THREE.Vector3(12, 6, 12);
+
+      // Interpolate position
+      camera.position.lerpVectors(startPosition.current, targetPosition, ease);
+
+      // Interpolate FOV
+      const targetFov = 65;
+      camera.fov = startFov.current + (targetFov - startFov.current) * ease;
+      camera.updateProjectionMatrix();
+
+      camera.lookAt(0, 1, 0);
+
+      if (progress >= 1) {
+        hasCompleted.current = true;
+        if (onComplete) {
+          onComplete();
+        }
+      }
+    }
+  });
+
+  // Reset when isActive changes
+  useEffect(() => {
+    if (isActive) {
+      hasCompleted.current = false;
+      startTime.current = null;
+    }
+  }, [isActive]);
+
+  return null;
+}
+
+/* =======================
+  Scene Transition Manager
 ======================= */
 function SceneTransition({ isTransitioning, progress, fromScene, toScene }) {
   const overlayRef = useRef();
@@ -58,7 +223,7 @@ function SceneTransition({ isTransitioning, progress, fromScene, toScene }) {
 }
 
 /* =======================
-   Enhanced Cinematic Camera
+  Enhanced Cinematic Camera
 ======================= */
 function CinematicCamera({
   isActive,
@@ -157,7 +322,7 @@ function CinematicCamera({
 }
 
 /* =======================
-   Enhanced Dynamic Lights
+  Enhanced Dynamic Lights
 ======================= */
 function DynamicLights({ isActive, lightKeyframes, progress }) {
   const ambientRef = useRef();
@@ -300,7 +465,7 @@ function DynamicLights({ isActive, lightKeyframes, progress }) {
 }
 
 /* =======================
-   Enhanced Model with Smooth Animation Blending
+  Enhanced Model with Smooth Animation Blending
 ======================= */
 function BoothWithLady({ activeAnimation, scene, animations }) {
   const group = useRef();
@@ -358,17 +523,30 @@ function BoothWithLady({ activeAnimation, scene, animations }) {
 }
 
 /* =======================
-   Enhanced Scene Manager with Transition Support
+  Enhanced Scene Manager with Transition Support
 ======================= */
 function CinematicSceneManager({ scene, onComplete, transitionProgress = 0 }) {
   const [progress, setProgress] = useState(0);
   const startTime = useRef(Date.now());
+  const completedRef = useRef(false);
 
   useFrame(() => {
     const elapsed = (Date.now() - startTime.current) / 1000;
     const newProgress = Math.min(elapsed / scene.duration, 1);
     setProgress(newProgress);
+
+    // Call onComplete when scene finishes
+    if (newProgress >= 1 && !completedRef.current && onComplete) {
+      completedRef.current = true;
+      onComplete();
+    }
   });
+
+  // Reset completed flag when scene changes
+  useEffect(() => {
+    completedRef.current = false;
+    startTime.current = Date.now();
+  }, [scene]);
 
   return (
     <>
@@ -376,7 +554,7 @@ function CinematicSceneManager({ scene, onComplete, transitionProgress = 0 }) {
         isActive={true}
         keyframes={scene.cameraKeyframes}
         progress={progress}
-        onComplete={onComplete}
+        onComplete={() => {}}
         easingType="smootherstep"
       />
       <DynamicLights
@@ -389,266 +567,259 @@ function CinematicSceneManager({ scene, onComplete, transitionProgress = 0 }) {
 }
 
 /* =======================
-   App
+  App
 ======================= */
 export default function App() {
   const { scene, animations } = useGLTF("/6.glb");
   const [activeAnimation, setActiveAnimation] = useState(null);
   const [currentSceneIndex, setCurrentSceneIndex] = useState(null);
+  const [lastPlayedSceneIndex, setLastPlayedSceneIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [orbitEnabled, setOrbitEnabled] = useState(true);
+  const [orbitEnabled, setOrbitEnabled] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [transitionProgress, setTransitionProgress] = useState(0);
+  const [show360Rotation, setShow360Rotation] = useState(true);
+  const [rotation360Complete, setRotation360Complete] = useState(false);
+  const [transitioningTo360, setTransitioningTo360] = useState(false);
+
+  // Use ref to store timeout ID so it persists across renders
+  const sceneTimeoutRef = useRef(null);
 
   // Enhanced cinematic scenes with refined keyframes
-const cinematicScenes = [
-  {
-    name: "Welcome",
-    description: "Elegant opening introduction",
-    icon: "🎬",
-    duration: 7,
-    animation: animations[0]?.name || null,
-    cameraKeyframes: [
-      {
-        time: 0,
-        position: new THREE.Vector3(12, 6, 12),
-        lookAt: new THREE.Vector3(0, 1, 0),
-        fov: 65,
-      },
-      {
-        time: 2,
-        position: new THREE.Vector3(10, 5, 10),
-        lookAt: new THREE.Vector3(0, 1, 0),
-        fov: 60,
-      },
-      {
-        time: 4.5,
-        position: new THREE.Vector3(8, 4, 8),
-        lookAt: new THREE.Vector3(0, 1, 0),
-        fov: 58,
-      },
-      {
-        time: 7,
-        position: new THREE.Vector3(6, 3, 6),
-        lookAt: new THREE.Vector3(0, 1, 0),
-        fov: 55,
-      },
-    ],
-    lightKeyframes: [
-      {
-        time: 0,
-        ambient: { intensity: 0.3 },
-        directional1: {
-          intensity: 0.5,
-          position: new THREE.Vector3(5, 10, 5),
+  const cinematicScenes = [
+    {
+      name: "Scene 1",
+      duration: 7,
+      animation: animations[0]?.name || null,
+      cameraKeyframes: [
+        {
+          time: 0,
+          position: new THREE.Vector3(12, 6, 12),
+          lookAt: new THREE.Vector3(0, 1, 0),
+          fov: 65,
         },
-        directional2: { intensity: 0.2 },
-        spotlight: { intensity: 0, angle: 0.5 },
-      },
-      {
-        time: 3.5,
-        ambient: { intensity: 0.5 },
-        directional1: {
-          intensity: 0.8,
-          position: new THREE.Vector3(5, 10, 5),
+        {
+          time: 2,
+          position: new THREE.Vector3(10, 5, 10),
+          lookAt: new THREE.Vector3(0, 1, 0),
+          fov: 60,
         },
-        directional2: { intensity: 0.3 },
-        spotlight: { intensity: 0, angle: 0.5 },
-      },
-      {
-        time: 7,
-        ambient: { intensity: 0.6 },
-        directional1: {
-          intensity: 1.0,
-          position: new THREE.Vector3(4, 8, 4),
+        {
+          time: 4.5,
+          position: new THREE.Vector3(8, 4, 8),
+          lookAt: new THREE.Vector3(0, 1, 0),
+          fov: 58,
         },
-        directional2: { intensity: 0.4 },
-        spotlight: { intensity: 0, angle: 0.5 },
-      },
-    ],
-  },
-  {
-    name: "Showcase",
-    description: "Smooth 360° orbital view with interior exploration",
-    icon: "🎥",
-    duration: 15,
-    animation: animations[1]?.name || animations[0]?.name || null,
-    cameraKeyframes: [
-      // Start: Front right angle
-      {
-        time: 0,
-        position: new THREE.Vector3(6, 3, 6),
-        lookAt: new THREE.Vector3(0, 1, 0),
-        fov: 55,
-      },
-      // Quarter turn: Right side
-      {
-        time: 2.5,
-        position: new THREE.Vector3(7, 2.5, 0),
-        lookAt: new THREE.Vector3(0, 1, 0),
-        fov: 50,
-      },
-      // Half turn: Back right
-      {
-        time: 5,
-        position: new THREE.Vector3(5, 2, -5),
-        lookAt: new THREE.Vector3(0, 1, 0),
-        fov: 48,
-      },
-      // Three-quarter: Left side
-      {
-        time: 7.5,
-        position: new THREE.Vector3(-6, 2, -3),
-        lookAt: new THREE.Vector3(0, 1, 0),
-        fov: 50,
-      },
-      // Interior peek: Move inside
-      {
-        time: 10,
-        position: new THREE.Vector3(-2, 1.5, 0),
-        lookAt: new THREE.Vector3(1, 1.3, 0),
-        fov: 65,
-      },
-      // Interior: Looking outward from inside
-      {
-        time: 12,
-        position: new THREE.Vector3(0, 1.4, 0.5),
-        lookAt: new THREE.Vector3(3, 1.2, -2),
-        fov: 70,
-      },
-      // Exit and full view
-      {
-        time: 15,
-        position: new THREE.Vector3(8, 4, 4),
-        lookAt: new THREE.Vector3(0, 1, 0),
-        fov: 55,
-      },
-    ],
-    lightKeyframes: [
-      {
-        time: 0,
-        ambient: { intensity: 0.6 },
-        directional1: {
-          intensity: 1.0,
-          position: new THREE.Vector3(5, 8, 5),
+        {
+          time: 7,
+          position: new THREE.Vector3(6, 3, 6),
+          lookAt: new THREE.Vector3(0, 1, 0),
+          fov: 55,
         },
-        directional2: { intensity: 0.4 },
-        spotlight: { intensity: 0, angle: 0.5 },
-      },
-      {
-        time: 5,
-        ambient: { intensity: 0.65 },
-        directional1: {
-          intensity: 0.9,
-          position: new THREE.Vector3(0, 8, -5),
+      ],
+      lightKeyframes: [
+        {
+          time: 0,
+          ambient: { intensity: 0.3 },
+          directional1: {
+            intensity: 0.5,
+            position: new THREE.Vector3(5, 10, 5),
+          },
+          directional2: { intensity: 0.2 },
+          spotlight: { intensity: 0, angle: 0.5 },
         },
-        directional2: { intensity: 0.5 },
-        spotlight: { intensity: 0, angle: 0.5 },
-      },
-      {
-        time: 10,
-        ambient: { intensity: 0.8 },
-        directional1: {
-          intensity: 0.6,
-          position: new THREE.Vector3(-3, 6, 0),
+        {
+          time: 3.5,
+          ambient: { intensity: 0.5 },
+          directional1: {
+            intensity: 0.8,
+            position: new THREE.Vector3(5, 10, 5),
+          },
+          directional2: { intensity: 0.3 },
+          spotlight: { intensity: 0, angle: 0.5 },
         },
-        directional2: { intensity: 0.7 },
-        spotlight: { intensity: 0.5, angle: 0.6 },
-      },
-      {
-        time: 15,
-        ambient: { intensity: 0.6 },
-        directional1: {
-          intensity: 1.0,
-          position: new THREE.Vector3(5, 8, 5),
+        {
+          time: 7,
+          ambient: { intensity: 0.6 },
+          directional1: {
+            intensity: 1.0,
+            position: new THREE.Vector3(4, 8, 4),
+          },
+          directional2: { intensity: 0.4 },
+          spotlight: { intensity: 0, angle: 0.5 },
         },
-        directional2: { intensity: 0.4 },
-        spotlight: { intensity: 0, angle: 0.5 },
-      },
-    ],
-  },
-  {
-    name: "Spotlight",
-    description: "Dramatic close-up finale",
-    icon: "✨",
-    duration: 6,
-    animation: animations[2]?.name || animations[0]?.name || null,
-    cameraKeyframes: [
-      {
-        time: 0,
-        position: new THREE.Vector3(8, 4, 4),
-        lookAt: new THREE.Vector3(0, 1, 0),
-        fov: 55,
-      },
-      {
-        time: 2,
-        position: new THREE.Vector3(2.5, 1.7, 3),
-        lookAt: new THREE.Vector3(0, 1.3, 0),
-        fov: 42,
-      },
-      {
-        time: 4,
-        position: new THREE.Vector3(2, 1.6, 2.5),
-        lookAt: new THREE.Vector3(0, 1.4, 0),
-        fov: 38,
-      },
-      {
-        time: 6,
-        position: new THREE.Vector3(1.5, 1.5, 2),
-        lookAt: new THREE.Vector3(0, 1.5, 0),
-        fov: 35,
-      },
-    ],
-    lightKeyframes: [
-      {
-        time: 0,
-        ambient: { intensity: 0.6 },
-        directional1: {
-          intensity: 1.0,
-          position: new THREE.Vector3(5, 8, 5),
+      ],
+    },
+    {
+      name: "Scene 2",
+      duration: 15,
+      animation: animations[1]?.name || animations[0]?.name || null,
+      cameraKeyframes: [
+        {
+          time: 0,
+          position: new THREE.Vector3(6, 3, 6),
+          lookAt: new THREE.Vector3(0, 1, 0),
+          fov: 55,
         },
-        directional2: { intensity: 0.4 },
-        spotlight: { intensity: 0, angle: 0.5 },
-      },
-      {
-        time: 2,
-        ambient: { intensity: 0.45 },
-        directional1: {
-          intensity: 0.7,
-          position: new THREE.Vector3(3, 7, 3),
+        {
+          time: 2.5,
+          position: new THREE.Vector3(7, 2.5, 0),
+          lookAt: new THREE.Vector3(0, 1, 0),
+          fov: 50,
         },
-        directional2: { intensity: 0.3 },
-        spotlight: { intensity: 0.8, angle: 0.45 },
-      },
-      {
-        time: 4,
-        ambient: { intensity: 0.3 },
-        directional1: {
-          intensity: 0.4,
-          position: new THREE.Vector3(3, 6, 3),
+        {
+          time: 5,
+          position: new THREE.Vector3(5, 2, -5),
+          lookAt: new THREE.Vector3(0, 1, 0),
+          fov: 48,
         },
-        directional2: { intensity: 0.2 },
-        spotlight: { intensity: 1.8, angle: 0.35 },
-      },
-      {
-        time: 6,
-        ambient: { intensity: 0.2 },
-        directional1: {
-          intensity: 0.3,
-          position: new THREE.Vector3(2, 5, 2),
+        {
+          time: 7.5,
+          position: new THREE.Vector3(-6, 2, -3),
+          lookAt: new THREE.Vector3(0, 1, 0),
+          fov: 50,
         },
-        directional2: { intensity: 0.1 },
-        spotlight: { intensity: 2.5, angle: 0.3 },
-      },
-    ],
-  },
-];
+        {
+          time: 10,
+          position: new THREE.Vector3(-2, 1.5, 0),
+          lookAt: new THREE.Vector3(1, 1.3, 0),
+          fov: 65,
+        },
+        {
+          time: 12,
+          position: new THREE.Vector3(0, 1.4, 0.5),
+          lookAt: new THREE.Vector3(3, 1.2, -2),
+          fov: 70,
+        },
+        {
+          time: 15,
+          position: new THREE.Vector3(8, 4, 4),
+          lookAt: new THREE.Vector3(0, 1, 0),
+          fov: 55,
+        },
+      ],
+      lightKeyframes: [
+        {
+          time: 0,
+          ambient: { intensity: 0.6 },
+          directional1: {
+            intensity: 1.0,
+            position: new THREE.Vector3(5, 8, 5),
+          },
+          directional2: { intensity: 0.4 },
+          spotlight: { intensity: 0, angle: 0.5 },
+        },
+        {
+          time: 5,
+          ambient: { intensity: 0.65 },
+          directional1: {
+            intensity: 0.9,
+            position: new THREE.Vector3(0, 8, -5),
+          },
+          directional2: { intensity: 0.5 },
+          spotlight: { intensity: 0, angle: 0.5 },
+        },
+        {
+          time: 10,
+          ambient: { intensity: 0.8 },
+          directional1: {
+            intensity: 0.6,
+            position: new THREE.Vector3(-3, 6, 0),
+          },
+          directional2: { intensity: 0.7 },
+          spotlight: { intensity: 0.5, angle: 0.6 },
+        },
+        {
+          time: 15,
+          ambient: { intensity: 0.6 },
+          directional1: {
+            intensity: 1.0,
+            position: new THREE.Vector3(5, 8, 5),
+          },
+          directional2: { intensity: 0.4 },
+          spotlight: { intensity: 0, angle: 0.5 },
+        },
+      ],
+    },
+    {
+      name: "Scene 3",
+      duration: 6,
+      animation: animations[2]?.name || animations[0]?.name || null,
+      cameraKeyframes: [
+        {
+          time: 0,
+          position: new THREE.Vector3(8, 4, 4),
+          lookAt: new THREE.Vector3(0, 1, 0),
+          fov: 55,
+        },
+        {
+          time: 2,
+          position: new THREE.Vector3(2.5, 1.7, 3),
+          lookAt: new THREE.Vector3(0, 1.3, 0),
+          fov: 42,
+        },
+        {
+          time: 4,
+          position: new THREE.Vector3(2, 1.6, 2.5),
+          lookAt: new THREE.Vector3(0, 1.4, 0),
+          fov: 38,
+        },
+        {
+          time: 6,
+          position: new THREE.Vector3(1.5, 1.5, 2),
+          lookAt: new THREE.Vector3(0, 1.5, 0),
+          fov: 35,
+        },
+      ],
+      lightKeyframes: [
+        {
+          time: 0,
+          ambient: { intensity: 0.6 },
+          directional1: {
+            intensity: 1.0,
+            position: new THREE.Vector3(5, 8, 5),
+          },
+          directional2: { intensity: 0.4 },
+          spotlight: { intensity: 0, angle: 0.5 },
+        },
+        {
+          time: 2,
+          ambient: { intensity: 0.45 },
+          directional1: {
+            intensity: 0.7,
+            position: new THREE.Vector3(3, 7, 3),
+          },
+          directional2: { intensity: 0.3 },
+          spotlight: { intensity: 0.8, angle: 0.45 },
+        },
+        {
+          time: 4,
+          ambient: { intensity: 0.3 },
+          directional1: {
+            intensity: 0.4,
+            position: new THREE.Vector3(3, 6, 3),
+          },
+          directional2: { intensity: 0.2 },
+          spotlight: { intensity: 1.8, angle: 0.35 },
+        },
+        {
+          time: 6,
+          ambient: { intensity: 0.2 },
+          directional1: {
+            intensity: 0.3,
+            position: new THREE.Vector3(2, 5, 2),
+          },
+          directional2: { intensity: 0.1 },
+          spotlight: { intensity: 2.5, angle: 0.3 },
+        },
+      ],
+    },
+  ];
 
   // Smooth transition between scenes
   const transitionToScene = async (index) => {
     setIsTransitioning(true);
 
-    // Fade out transition
     for (let i = 0; i <= 100; i += 5) {
       setTransitionProgress(i / 100);
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -658,52 +829,89 @@ const cinematicScenes = [
     setTransitionProgress(0);
   };
 
+  // Cleanup timeout on unmount
   useEffect(() => {
-    const timer = setTimeout(() => {
-      playScene(0);
-    }, 500);
-    return () => clearTimeout(timer);
+    return () => {
+      if (sceneTimeoutRef.current) {
+        clearTimeout(sceneTimeoutRef.current);
+      }
+    };
   }, []);
+
+  // Handle 360 rotation completion
+  const handle360Complete = () => {
+    setShow360Rotation(false);
+    setRotation360Complete(true);
+    setOrbitEnabled(true);
+  };
+
+  // Handle transition back to 360 end completion
+  const handleTransitionTo360Complete = () => {
+    setTransitioningTo360(false);
+    setOrbitEnabled(true);
+  };
+
+  const handleSceneComplete = (index) => {
+    setIsPlaying(false);
+    setLastPlayedSceneIndex(index);
+    setCurrentSceneIndex(null);
+
+    // If Scene 3 (index 2) just completed, transition back to 360 end position
+    if (index === 2) {
+      setTransitioningTo360(true);
+      setOrbitEnabled(false);
+    } else {
+      setOrbitEnabled(true);
+    }
+  };
 
   const playScene = async (index, skipTransition = false) => {
     if (isPlaying) return;
 
+    // Stop 360 rotation if still active
+    setShow360Rotation(false);
+    setTransitioningTo360(false);
+    setOrbitEnabled(false);
+
+    // Clear any existing timeout
+    if (sceneTimeoutRef.current) {
+      clearTimeout(sceneTimeoutRef.current);
+      sceneTimeoutRef.current = null;
+    }
+
     const sceneData = cinematicScenes[index];
 
-    // Smooth transition if not the first scene
     if (!skipTransition && currentSceneIndex !== null) {
       await transitionToScene(index);
     }
 
     setIsPlaying(true);
     setCurrentSceneIndex(index);
-    setOrbitEnabled(false);
 
     if (sceneData.animation) {
       setActiveAnimation(sceneData.animation);
     }
 
-    setTimeout(() => {
-      setIsPlaying(false);
-      setCurrentSceneIndex(null);
-      setOrbitEnabled(true);
+    // Store timeout reference
+    sceneTimeoutRef.current = setTimeout(() => {
+      handleSceneComplete(index);
     }, sceneData.duration * 1000);
   };
 
-  const playAllScenes = async () => {
-    for (let i = 0; i < cinematicScenes.length; i++) {
-      await new Promise((resolve) => {
-        playScene(i, i === 0);
-        setTimeout(
-          resolve,
-          cinematicScenes[i].duration * 1000 +
-            (i < cinematicScenes.length - 1 ? 500 : 0)
-        );
-      });
-    }
+  const playNextScene = () => {
+    if (isPlaying) return;
+
+    const nextIndex = (lastPlayedSceneIndex + 1) % cinematicScenes.length;
+    playScene(nextIndex, nextIndex === 0);
   };
 
   const stopPlayback = () => {
+    // Clear timeout when stopping
+    if (sceneTimeoutRef.current) {
+      clearTimeout(sceneTimeoutRef.current);
+      sceneTimeoutRef.current = null;
+    }
+
     setIsPlaying(false);
     setCurrentSceneIndex(null);
     setOrbitEnabled(true);
@@ -730,7 +938,7 @@ const cinematicScenes = [
         background: "linear-gradient(to bottom, #0f0c29, #302b63, #24243e)",
       }}
     >
-      {/* Cinematic Scenes Panel */}
+      {/* Cinematic Scene Control */}
       <div
         style={{
           position: "absolute",
@@ -743,223 +951,35 @@ const cinematicScenes = [
           maxWidth: "280px",
         }}
       >
-        <div
+        <button
+          onClick={playNextScene}
+          disabled={isPlaying}
           style={{
+            padding: "16px 24px",
+            background: isPlaying
+              ? "linear-gradient(135deg, #555 0%, #333 100%)"
+              : "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
             color: "white",
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            padding: "14px 18px",
-            borderRadius: "14px",
-            fontWeight: "bold",
+            border: "none",
+            borderRadius: "12px",
+            cursor: isPlaying ? "not-allowed" : "pointer",
             fontSize: "15px",
-            boxShadow: "0 8px 25px rgba(102, 126, 234, 0.5)",
-            textAlign: "center",
-            letterSpacing: "1px",
-          }}
-        >
-          🎬 CINEMATIC SCENES
-        </div>
-
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button
-            onClick={playAllScenes}
-            disabled={isPlaying}
-            style={{
-              flex: 1,
-              padding: "14px",
-              background: isPlaying
-                ? "linear-gradient(135deg, #555 0%, #333 100%)"
-                : "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-              color: "white",
-              border: "none",
-              borderRadius: "12px",
-              cursor: isPlaying ? "not-allowed" : "pointer",
-              fontSize: "13px",
-              fontWeight: "700",
-              boxShadow: isPlaying
-                ? "none"
-                : "0 6px 20px rgba(245, 87, 108, 0.5)",
-              transition: "all 0.3s ease",
-              opacity: isPlaying ? 0.6 : 1,
-              letterSpacing: "0.5px",
-            }}
-          >
-            ▶️ Play All
-          </button>
-
-          {isPlaying && (
-            <button
-              onClick={stopPlayback}
-              style={{
-                padding: "14px 18px",
-                background: "linear-gradient(135deg, #ff6b6b 0%, #c92a2a 100%)",
-                color: "white",
-                border: "none",
-                borderRadius: "12px",
-                cursor: "pointer",
-                fontSize: "13px",
-                fontWeight: "700",
-                boxShadow: "0 6px 20px rgba(255, 107, 107, 0.5)",
-                transition: "all 0.3s ease",
-                letterSpacing: "0.5px",
-              }}
-            >
-              ⏹️
-            </button>
-          )}
-        </div>
-
-        <div
-          style={{
+            fontWeight: "700",
+            boxShadow: isPlaying
+              ? "none"
+              : "0 6px 20px rgba(245, 87, 108, 0.5)",
+            transition: "all 0.3s ease",
+            opacity: isPlaying ? 0.6 : 1,
+            letterSpacing: "0.5px",
             display: "flex",
-            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
             gap: "10px",
           }}
         >
-          {cinematicScenes.map((sceneData, index) => (
-            <button
-              key={index}
-              onClick={() => playScene(index)}
-              disabled={isPlaying}
-              style={{
-                padding: "16px 18px",
-                background:
-                  currentSceneIndex === index
-                    ? "linear-gradient(135deg, #ffd89b 0%, #19547b 100%)"
-                    : isPlaying
-                    ? "rgba(255, 255, 255, 0.08)"
-                    : "rgba(255, 255, 255, 0.1)",
-                color: "white",
-                border:
-                  currentSceneIndex === index
-                    ? "2px solid #ffd89b"
-                    : "1px solid rgba(255, 255, 255, 0.2)",
-                borderRadius: "12px",
-                cursor: isPlaying ? "not-allowed" : "pointer",
-                fontSize: "14px",
-                fontWeight: "600",
-                transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-                textAlign: "left",
-                opacity: isPlaying && currentSceneIndex !== index ? 0.4 : 1,
-                backdropFilter: "blur(15px)",
-                display: "flex",
-                flexDirection: "column",
-                gap: "6px",
-                boxShadow:
-                  currentSceneIndex === index
-                    ? "0 6px 20px rgba(255, 216, 155, 0.4)"
-                    : "0 4px 12px rgba(0, 0, 0, 0.3)",
-                transform:
-                  currentSceneIndex === index ? "scale(1.02)" : "scale(1)",
-              }}
-            >
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "10px" }}
-              >
-                <span style={{ fontSize: "24px" }}>{sceneData.icon}</span>
-                <span
-                  style={{ flex: 1, fontWeight: "700", letterSpacing: "0.5px" }}
-                >
-                  {sceneData.name}
-                </span>
-                <span
-                  style={{
-                    fontSize: "10px",
-                    opacity: 0.8,
-                    background: "rgba(0,0,0,0.4)",
-                    padding: "4px 10px",
-                    borderRadius: "6px",
-                    fontWeight: "600",
-                  }}
-                >
-                  {sceneData.duration}s
-                </span>
-              </div>
-              <span
-                style={{ fontSize: "11px", opacity: 0.75, marginLeft: "34px" }}
-              >
-                {sceneData.description}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Manual Animation Controls */}
-      <div
-        style={{
-          position: "absolute",
-          zIndex: 10,
-          top: 20,
-          right: 20,
-          display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-          maxWidth: "220px",
-        }}
-      >
-        <div
-          style={{
-            color: "white",
-            background: "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
-            padding: "12px 16px",
-            borderRadius: "12px",
-            fontWeight: "bold",
-            fontSize: "13px",
-            boxShadow: "0 6px 20px rgba(250, 112, 154, 0.4)",
-            textAlign: "center",
-            letterSpacing: "1px",
-          }}
-        >
-          🎭 ANIMATIONS
-        </div>
-        {animations && animations.length > 0 ? (
-          animations.map((anim) => (
-            <button
-              key={anim.name}
-              onClick={() => handleAnimationClick(anim.name)}
-              disabled={isPlaying}
-              style={{
-                padding: "12px 18px",
-                background:
-                  activeAnimation === anim.name
-                    ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                    : "rgba(255, 255, 255, 0.1)",
-                color: "white",
-                border:
-                  activeAnimation === anim.name
-                    ? "2px solid #667eea"
-                    : "1px solid rgba(255, 255, 255, 0.2)",
-                borderRadius: "10px",
-                cursor: isPlaying ? "not-allowed" : "pointer",
-                fontSize: "13px",
-                fontWeight: "600",
-                transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-                opacity: isPlaying ? 0.5 : 1,
-                backdropFilter: "blur(15px)",
-                boxShadow:
-                  activeAnimation === anim.name
-                    ? "0 6px 20px rgba(102, 126, 234, 0.4)"
-                    : "0 4px 12px rgba(0, 0, 0, 0.3)",
-                letterSpacing: "0.3px",
-              }}
-            >
-              {anim.name}
-            </button>
-          ))
-        ) : (
-          <div
-            style={{
-              color: "white",
-              background: "rgba(0,0,0,0.5)",
-              padding: "12px",
-              borderRadius: "10px",
-              fontSize: "12px",
-              textAlign: "center",
-            }}
-          >
-            No animations found
-          </div>
-        )}
+          <span style={{ fontSize: "18px" }}>▶️</span>
+          Next Scene
+        </button>
       </div>
 
       {/* Status Indicator */}
@@ -1018,7 +1038,7 @@ const cinematicScenes = [
       )}
 
       <Canvas
-        camera={{ position: [5, 2.5, 5], fov: 50 }}
+        camera={{ position: [8, 3, 8], fov: 50 }}
         style={{ width: "100%", height: "100%" }}
         shadows
         gl={{ antialias: true, alpha: false }}
@@ -1026,6 +1046,20 @@ const cinematicScenes = [
         <color attach="background" args={["#0a0a0a"]} />
         <fog attach="fog" args={["#0a0a0a", 10, 50]} />
 
+        {/* 360 Rotation Camera - Plays once on load */}
+        {show360Rotation && !isPlaying && (
+          <Rotation360Camera isActive={true} onComplete={handle360Complete} />
+        )}
+
+        {/* Transition back to 360 end position after Scene 3 */}
+        {transitioningTo360 && !isPlaying && (
+          <TransitionTo360End
+            isActive={true}
+            onComplete={handleTransitionTo360Complete}
+          />
+        )}
+
+        {/* Lighting */}
         {!isPlaying ? (
           <>
             <ambientLight intensity={0.5} />
@@ -1069,7 +1103,12 @@ const cinematicScenes = [
         </mesh>
 
         <OrbitControls
-          enabled={orbitEnabled && !isPlaying}
+          enabled={
+            orbitEnabled &&
+            !isPlaying &&
+            !show360Rotation &&
+            !transitioningTo360
+          }
           enableDamping
           dampingFactor={0.05}
           minDistance={2}
@@ -1092,21 +1131,6 @@ const cinematicScenes = [
             transform: scale(1.1);
             box-shadow: 0 0 0 10px rgba(255, 107, 107, 0);
           }
-        }
-        
-        div::-webkit-scrollbar {
-          width: 6px;
-        }
-        div::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 10px;
-        }
-        div::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.3);
-          border-radius: 10px;
-        }
-        div::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.5);
         }
 
         button:hover:not(:disabled) {
